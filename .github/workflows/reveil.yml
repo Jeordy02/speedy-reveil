@@ -1,0 +1,42 @@
+# Réveil de Speedy : ouvre la page du réveil dans un vrai Chrome (l'hébergeur n'a pas de tâches
+# planifiées et n'ouvre ses pages qu'à un navigateur). Le serveur envoie alors les rappels de 10 h,
+# 12 h et 18 h et les alertes de courses dues. L'adresse complète, clé comprise, est un secret.
+name: Réveil Speedy
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # toutes les 10 min (GitHub peut prendre quelques minutes de retard)
+    - cron: '17 4 1 * *'     # le 1er du mois : petit commit, sinon GitHub arrête la tâche après 60 jours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reveil:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ouvrir la page du réveil
+        env:
+          REVEIL_URL: ${{ secrets.REVEIL_URL }}
+        run: |
+          page=$(google-chrome --headless=new --no-sandbox --disable-gpu --virtual-time-budget=15000 --dump-dom "$REVEIL_URL" 2>/dev/null || true)
+          if echo "$page" | grep -q 'Réveil fait'; then
+            echo "$page" | grep -o 'Réveil fait[^<]*'
+          else
+            echo "Le site n'a pas répondu comme prévu."
+            exit 1
+          fi
+
+  garder-en-vie:
+    if: github.event.schedule == '17 4 1 * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          date -u +%F > dernier-passage.txt
+          git config user.name "reveil-speedy"
+          git config user.email "reveil-speedy@users.noreply.github.com"
+          git add dernier-passage.txt
+          git commit -m "Réveil toujours actif" && git push
